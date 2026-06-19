@@ -1,0 +1,934 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Kasungu NP · Field Operations</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;700&family=Space+Mono:wght@400;700&family=Syne:wght@600;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+/* ─── TOKENS ─────────────────────────────────────────────────────────────── */
+:root{
+  --ink:#1a1208;
+  --ink2:#3d2e14;
+  --ink3:#7a6040;
+  --paper:#fdf6e8;
+  --paper2:#f5ecd4;
+  --paper3:#ede0bc;
+  --paper4:#e4d3a4;
+  --card:#fff9ee;
+  --bdr:#d9c898;
+  --bdr2:#c4af72;
+
+  --forest:#1e5c2e;
+  --forest2:#2d7a40;
+  --forest3:#4aad60;
+  --forest4:rgba(30,92,46,.12);
+
+  --amber:#c45a00;
+  --amber2:#e87a20;
+  --amber3:#ffa040;
+  --amber-bg:rgba(196,90,0,.1);
+
+  --sky:#1464a0;
+  --sky2:#2884cc;
+  --sky3:#50aaee;
+  --sky-bg:rgba(20,100,160,.1);
+
+  --red:#b02020;
+  --red2:#d84040;
+  --red-bg:rgba(176,32,32,.1);
+
+  --gold:#a07800;
+  --gold2:#c89c20;
+  --gold-bg:rgba(160,120,0,.1);
+
+  --lion:#c45a00;
+  --elephant:#5a3e9e;
+  --giraffe:#1e6e40;
+  --hippo:#1464a0;
+}
+*{margin:0;padding:0;box-sizing:border-box;}
+html,body{height:100%;overflow:hidden;background:var(--paper);color:var(--ink);
+  font-family:'DM Sans',sans-serif;font-size:13px;}
+
+/* ─── LAYOUT — MAP-FIRST (map takes left 55%, right panel 45%) ──────────── */
+/* Structure:
+   [NAV BAR — full width, 56px]
+   [MAP PANEL — left 58%] [RIGHT PANEL — 42%]
+     right panel splits vertically into:
+       top row of 4 stat tiles
+       middle: animal detail + chart
+       bottom: animal list
+*/
+.nav{
+  height:56px;background:var(--forest);
+  display:flex;align-items:center;padding:0 20px;gap:16px;
+  border-bottom:3px solid var(--forest3);
+  flex-shrink:0;position:relative;z-index:1000;
+}
+.nav-logo{
+  width:38px;height:38px;border-radius:10px;
+  background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.25);
+  display:flex;align-items:center;justify-content:center;font-size:20px;
+}
+.nav-brand{color:#fff;}
+.nav-brand h1{font-family:'Syne';font-size:16px;font-weight:800;letter-spacing:.5px;line-height:1;}
+.nav-brand p{font-size:10px;opacity:.65;letter-spacing:.3px;margin-top:1px;}
+.nav-mid{flex:1;display:flex;align-items:center;justify-content:center;gap:6px;}
+.nav-tab{
+  color:rgba(255,255,255,.55);padding:6px 14px;border-radius:20px;
+  font-size:11px;font-weight:500;cursor:pointer;transition:all .2s;letter-spacing:.3px;
+}
+.nav-tab:hover,.nav-tab.on{background:rgba(255,255,255,.15);color:#fff;}
+.nav-right{display:flex;align-items:center;gap:10px;}
+.live-chip{
+  display:flex;align-items:center;gap:5px;
+  background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.2);
+  border-radius:20px;padding:5px 11px;font-size:11px;color:#fff;
+}
+.blink{width:6px;height:6px;border-radius:50%;background:#6dff9e;animation:bl 1.2s infinite;}
+@keyframes bl{0%,100%{opacity:1;}50%{opacity:.1;}}
+.nav-clk{font-family:'Space Mono';font-size:13px;color:rgba(255,255,255,.8);text-align:right;}
+.nav-clk small{font-size:9px;display:block;opacity:.6;}
+
+.body{display:grid;grid-template-columns:58% 42%;height:calc(100vh - 56px);overflow:hidden;}
+
+/* ─── LEFT / MAP ─────────────────────────────────────────────────────────── */
+.map-col{position:relative;display:flex;flex-direction:column;}
+.map-wrap{flex:1;position:relative;}
+#map{position:absolute;inset:0;}
+
+/* floating map header strip */
+.map-header{
+  position:absolute;top:0;left:0;right:0;z-index:800;
+  background:linear-gradient(180deg,rgba(253,246,232,.97) 70%,transparent);
+  padding:10px 14px 18px;
+  display:flex;align-items:flex-start;gap:10px;
+}
+.map-search-wrap{flex:1;}
+.map-si{
+  width:100%;background:var(--card);border:1px solid var(--bdr2);
+  color:var(--ink);padding:8px 12px 8px 34px;border-radius:8px;
+  font-family:'DM Sans';font-size:12px;outline:none;
+  box-shadow:0 2px 8px rgba(0,0,0,.08);
+}
+.map-si::placeholder{color:var(--ink3);}
+.search-icon{position:absolute;left:10px;top:50%;transform:translateY(-50%);font-size:14px;pointer-events:none;}
+.map-search-wrap{position:relative;}
+.map-btns{display:flex;gap:5px;}
+.mb{
+  width:34px;height:34px;background:var(--card);border:1px solid var(--bdr2);
+  border-radius:8px;cursor:pointer;display:flex;align-items:center;justify-content:center;
+  font-size:14px;color:var(--ink2);transition:all .2s;
+  box-shadow:0 2px 6px rgba(0,0,0,.1);
+}
+.mb:hover{border-color:var(--forest2);color:var(--forest);}
+.mb.on{background:var(--forest);border-color:var(--forest);color:#fff;}
+
+/* species filter chips on map */
+.map-chips{
+  position:absolute;bottom:44px;left:50%;transform:translateX(-50%);
+  z-index:800;display:flex;gap:6px;
+}
+.mchip{
+  display:flex;align-items:center;gap:5px;
+  background:rgba(253,246,232,.92);border:1px solid var(--bdr2);
+  border-radius:20px;padding:4px 11px;font-size:11px;font-weight:500;
+  color:var(--ink2);cursor:pointer;transition:all .2s;
+  backdrop-filter:blur(6px);box-shadow:0 2px 8px rgba(0,0,0,.1);
+}
+.mchip:hover{border-color:var(--bdr2);background:var(--paper2);}
+.mchip.off{opacity:.45;}
+.mchip-dot{width:7px;height:7px;border-radius:50%;}
+
+/* coords */
+.map-coords{
+  position:absolute;bottom:8px;right:10px;z-index:800;
+  background:rgba(253,246,232,.9);border:1px solid var(--bdr);
+  border-radius:8px;padding:4px 10px;font-family:'Space Mono';font-size:9px;
+  color:var(--ink3);backdrop-filter:blur(4px);
+}
+.cv{color:var(--ink);}
+
+/* ─── LEGEND strip at bottom of map col ──────────────────────────────────── */
+.map-legend{
+  height:40px;flex-shrink:0;
+  background:var(--paper2);border-top:1px solid var(--bdr);
+  display:flex;align-items:center;padding:0 14px;gap:18px;
+  font-size:10px;color:var(--ink3);
+}
+.leg{display:flex;align-items:center;gap:5px;}
+.lg-box{width:16px;height:10px;border-radius:2px;}
+.lg-ln{width:16px;height:2px;border-radius:1px;}
+
+/* ─── RIGHT PANEL ────────────────────────────────────────────────────────── */
+.right-col{
+  background:var(--paper2);border-left:1px solid var(--bdr);
+  display:grid;
+  grid-template-rows:auto auto 1fr;
+  overflow:hidden;
+}
+
+/* ── ROW 1: 4 stat tiles ─────────────────────────────────────────────────── */
+.stat-row{
+  display:grid;grid-template-columns:repeat(4,1fr);
+  border-bottom:1px solid var(--bdr);
+  flex-shrink:0;
+}
+.st{
+  padding:10px 10px 8px;border-right:1px solid var(--bdr);
+  background:var(--card);
+}
+.st:last-child{border-right:none;}
+.st-icon{font-size:18px;margin-bottom:4px;}
+.st-val{font-family:'Space Mono';font-size:18px;font-weight:700;line-height:1;}
+.st-lbl{font-size:9px;text-transform:uppercase;letter-spacing:1px;color:var(--ink3);margin-top:2px;}
+.st-sub{font-size:9px;color:var(--ink3);margin-top:3px;}
+.bar-track{height:3px;background:var(--paper3);border-radius:2px;margin-top:5px;overflow:hidden;}
+.bar-fill{height:100%;border-radius:2px;}
+
+/* ── ROW 2: species + detail + chart ─────────────────────────────────────── */
+.mid-row{
+  display:grid;grid-template-columns:130px 1fr;
+  border-bottom:1px solid var(--bdr);
+  overflow:hidden;min-height:0;
+}
+
+/* species sidebar in mid row */
+.sp-side{
+  border-right:1px solid var(--bdr);background:var(--paper);
+  display:flex;flex-direction:column;overflow-y:auto;padding:8px;gap:5px;
+}
+.spc{
+  border-radius:8px;padding:8px 9px;cursor:pointer;
+  border:1px solid var(--bdr);background:var(--card);
+  transition:all .2s;position:relative;overflow:hidden;
+}
+.spc::after{content:'';position:absolute;bottom:0;left:0;right:0;height:2px;}
+.spc.lion::after{background:var(--lion);}
+.spc.elephant::after{background:var(--elephant);}
+.spc.giraffe::after{background:var(--giraffe);}
+.spc.hippo::after{background:var(--hippo);}
+.spc:hover,.spc.sel{border-color:var(--bdr2);box-shadow:0 2px 8px rgba(0,0,0,.08);}
+.spc-top{display:flex;align-items:center;gap:5px;margin-bottom:5px;}
+.spc-em{font-size:16px;}
+.spc-nm{font-size:12px;font-weight:700;flex:1;line-height:1;}
+.spc-sw{
+  width:24px;height:14px;border-radius:7px;border:1px solid var(--bdr2);
+  background:var(--paper3);position:relative;cursor:pointer;flex-shrink:0;
+  transition:background .25s;
+}
+.spc-sw.on{background:var(--forest2);}
+.spc-sw::after{content:'';position:absolute;width:10px;height:10px;border-radius:50%;
+  background:#fff;top:1px;left:1px;transition:transform .25s;box-shadow:0 1px 3px rgba(0,0,0,.2);}
+.spc-sw.on::after{transform:translateX(10px);}
+.spc-nums{display:grid;grid-template-columns:1fr 1fr;gap:3px;}
+.sn{background:var(--paper2);border-radius:4px;padding:3px 5px;text-align:center;}
+.snv{font-family:'Space Mono';font-size:11px;font-weight:700;}
+.snl{font-size:8px;color:var(--ink3);letter-spacing:.5px;}
+.lion .snv{color:var(--lion);}
+.elephant .snv{color:var(--elephant);}
+.giraffe .snv{color:var(--giraffe);}
+.hippo .snv{color:var(--hippo);}
+
+/* detail + chart */
+.det-chart{display:flex;flex-direction:column;overflow:hidden;min-height:0;}
+
+/* detail card */
+.det-card{
+  padding:10px 12px;border-bottom:1px solid var(--bdr);
+  background:var(--card);flex-shrink:0;
+}
+.dc-header{display:flex;align-items:center;gap:9px;margin-bottom:8px;}
+.dc-ava{
+  width:40px;height:40px;border-radius:9px;font-size:22px;
+  display:flex;align-items:center;justify-content:center;
+  border:2px solid var(--bdr);background:var(--paper2);flex-shrink:0;
+}
+.dc-name{font-family:'Syne';font-size:14px;font-weight:800;line-height:1.1;}
+.dc-id{font-family:'Space Mono';font-size:9px;color:var(--ink3);margin-top:2px;}
+.dc-pill{
+  display:inline-flex;align-items:center;gap:3px;
+  font-size:9px;padding:2px 7px;border-radius:10px;margin-top:3px;
+  font-weight:500;letter-spacing:.3px;
+}
+.dc-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:5px;}
+.dc-cell{background:var(--paper2);border-radius:6px;padding:6px 8px;border:1px solid var(--bdr);}
+.dc-lbl{font-size:8px;text-transform:uppercase;letter-spacing:1px;color:var(--ink3);}
+.dc-val{font-family:'Space Mono';font-size:12px;font-weight:700;margin-top:2px;color:var(--ink);}
+
+/* chart area */
+.chart-area{flex:1;padding:10px 12px;min-height:0;background:var(--card);border-bottom:1px solid var(--bdr);}
+.chart-hdr{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;}
+.chart-title{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:var(--ink2);}
+.chart-tabs{display:flex;gap:3px;}
+.ctab{
+  font-size:9px;padding:2px 7px;border-radius:5px;cursor:pointer;
+  border:1px solid var(--bdr);color:var(--ink3);background:var(--paper2);
+  transition:all .2s;
+}
+.ctab.on{background:var(--forest);color:#fff;border-color:var(--forest);}
+canvas#spark{width:100%;display:block;}
+
+/* trail slider under chart */
+.trail-row{
+  padding:8px 12px;background:var(--paper);border-bottom:1px solid var(--bdr);
+  display:flex;align-items:center;gap:10px;flex-shrink:0;
+}
+.tslider{flex:1;accent-color:var(--forest2);cursor:pointer;}
+.trail-lbl{font-size:10px;color:var(--ink2);white-space:nowrap;font-weight:500;}
+
+/* ── ROW 3: alerts + animal list side by side ─────────────────────────────── */
+.bot-row{
+  display:grid;grid-template-columns:1fr 1fr;
+  overflow:hidden;min-height:0;
+}
+.bot-panel{display:flex;flex-direction:column;overflow:hidden;}
+.bot-hdr{
+  padding:7px 12px;border-bottom:1px solid var(--bdr);flex-shrink:0;
+  background:var(--paper3);display:flex;align-items:center;justify-content:space-between;
+}
+.bot-title{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.2px;color:var(--ink2);}
+.bot-body{overflow-y:auto;flex:1;}
+
+/* Alert items */
+.af{
+  display:flex;gap:8px;padding:7px 10px;
+  border-bottom:1px solid var(--bdr);font-size:11px;line-height:1.4;
+  transition:background .15s;
+}
+.af:hover{background:var(--paper2);}
+.af-stripe{width:3px;border-radius:2px;flex-shrink:0;align-self:stretch;}
+.af.d .af-stripe{background:var(--red2);}
+.af.w .af-stripe{background:var(--amber2);}
+.af.g .af-stripe{background:var(--forest3);}
+.af.i .af-stripe{background:var(--sky2);}
+.af-ico{font-size:13px;flex-shrink:0;}
+.af-txt{flex:1;}
+.af-msg{color:var(--ink);}
+.af-t{font-family:'Space Mono';font-size:9px;color:var(--ink3);margin-top:2px;}
+
+/* Animal list items */
+.ali{
+  display:flex;align-items:center;gap:8px;padding:7px 10px;
+  border-bottom:1px solid var(--bdr);cursor:pointer;transition:background .15s;
+}
+.ali:hover{background:var(--paper2);}
+.ali.sel{background:var(--paper3);border-left:3px solid var(--forest2);}
+.ali-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;}
+.ali-main{flex:1;}
+.ali-name{font-weight:700;font-size:12px;line-height:1.1;}
+.ali-sub{font-family:'Space Mono';font-size:9px;color:var(--ink3);}
+.ali-badge{font-size:9px;padding:2px 7px;border-radius:10px;white-space:nowrap;font-weight:500;}
+.bok{background:rgba(30,92,46,.1);color:var(--forest2);border:1px solid rgba(30,92,46,.2);}
+.bwn{background:rgba(196,90,0,.1);color:var(--amber);border:1px solid rgba(196,90,0,.2);}
+.bdn{background:rgba(176,32,32,.1);color:var(--red);border:1px solid rgba(176,32,32,.2);}
+
+/* filter pills */
+.fp-wrap{display:flex;gap:3px;}
+.fp{font-size:9px;padding:2px 7px;border-radius:8px;cursor:pointer;
+  border:1px solid var(--bdr);color:var(--ink3);background:var(--paper2);transition:all .15s;}
+.fp.on{background:var(--forest);color:#fff;border-color:var(--forest);}
+
+/* Leaflet popup */
+.leaflet-popup-content-wrapper{background:var(--card)!important;border:1px solid var(--bdr2)!important;
+  border-radius:10px!important;box-shadow:0 8px 24px rgba(0,0,0,.15)!important;color:var(--ink)!important;
+  font-family:'DM Sans'!important;}
+.leaflet-popup-tip{background:var(--card)!important;}
+.pt{font-family:'Syne';font-size:13px;font-weight:800;margin-bottom:6px;
+  padding-bottom:5px;border-bottom:1px solid var(--bdr);}
+.pr{display:flex;justify-content:space-between;font-size:11px;margin-bottom:2px;color:var(--ink3);}
+.pr span:last-child{color:var(--ink);font-family:'Space Mono';}
+.pal{color:var(--red);font-size:10px;margin-top:5px;}
+
+::-webkit-scrollbar{width:4px;}
+::-webkit-scrollbar-track{background:transparent;}
+::-webkit-scrollbar-thumb{background:var(--bdr2);border-radius:2px;}
+</style>
+</head>
+<body>
+
+<!-- ── NAV BAR ── -->
+<nav class="nav">
+  <div class="nav-logo">🏞</div>
+  <div class="nav-brand">
+    <h1>KASUNGU NATIONAL PARK</h1>
+    <p>Field Operations &amp; Wildlife Command · Malawi</p>
+  </div>
+  <div class="nav-mid">
+    <div class="nav-tab on" id="tab-overview" onclick="setTab('overview',this)">Overview</div>
+    <div class="nav-tab" id="tab-alerts"   onclick="setTab('alerts',this)">Alerts <span id="alertBadge" style="background:var(--red2);color:#fff;border-radius:10px;padding:1px 6px;font-size:9px;">3</span></div>
+    <div class="nav-tab" id="tab-report"   onclick="setTab('report',this)">Daily Report</div>
+    <div style="width:1px;height:20px;background:rgba(255,255,255,.2);"></div>
+    <div class="nav-tab" id="pill-sat"  onclick="setBm('sat',this)">🛰 Satellite</div>
+    <div class="nav-tab" id="pill-osm"  onclick="setBm('osm',this)">🗺 Streets</div>
+    <div class="nav-tab" id="pill-topo" onclick="setBm('topo',this)">⛰ Topo</div>
+  </div>
+  <div class="nav-right">
+    <div class="live-chip"><div class="blink"></div>LIVE</div>
+    <div class="nav-clk"><div id="clk">--:--:--</div><small id="dat">--- -- ----</small></div>
+  </div>
+</nav>
+
+<!-- ── BODY ── -->
+<div class="body">
+
+  <!-- ── MAP COLUMN ── -->
+  <div class="map-col">
+    <div class="map-wrap">
+      <div id="map"></div>
+
+      <!-- Floating header -->
+      <div class="map-header">
+        <div class="map-search-wrap">
+          <span class="search-icon">🔍</span>
+          <input class="map-si" id="srch" placeholder="Search animal ID, name or zone…" oninput="doSearch(this.value)">
+        </div>
+        <div class="map-btns">
+          <button class="mb on" id="mb-paths" onclick="togglePaths(this)" title="Trails">〰</button>
+          <button class="mb on" id="mb-zones" onclick="toggleZones(this)" title="Zones">⬡</button>
+          <button class="mb" onclick="fitPark()" title="Fit park">⊡</button>
+          <button class="mb" onclick="map.zoomIn()" title="Zoom in">+</button>
+          <button class="mb" onclick="map.zoomOut()" title="Zoom out">−</button>
+        </div>
+      </div>
+
+      <!-- Species chips -->
+      <div class="map-chips">
+        <div class="mchip" id="mc-lion"     onclick="toggleSp('lion',this)">
+          <div class="mchip-dot" style="background:var(--lion)"></div>🦁 Lions
+        </div>
+        <div class="mchip" id="mc-elephant" onclick="toggleSp('elephant',this)">
+          <div class="mchip-dot" style="background:var(--elephant)"></div>🐘 Elephants
+        </div>
+        <div class="mchip" id="mc-giraffe"  onclick="toggleSp('giraffe',this)">
+          <div class="mchip-dot" style="background:var(--giraffe)"></div>🦒 Giraffes
+        </div>
+        <div class="mchip" id="mc-hippo"    onclick="toggleSp('hippo',this)">
+          <div class="mchip-dot" style="background:var(--hippo)"></div>🦛 Hippos
+        </div>
+      </div>
+
+      <div class="map-coords">
+        Lat <span class="cv" id="mLat">-12.946</span> &nbsp;
+        Lng <span class="cv" id="mLng">33.136</span> &nbsp;
+        Z<span class="cv" id="mZ">10</span> &nbsp;
+        <span id="mSel" style="color:var(--forest2);font-weight:700;">—</span>
+      </div>
+    </div>
+
+    <!-- Legend strip -->
+    <div class="map-legend">
+      <div class="leg"><div class="lg-box" style="background:rgba(30,92,46,.2);border:1px solid var(--forest2);"></div>Park boundary</div>
+      <div class="leg"><div class="lg-box" style="background:rgba(20,100,160,.25);border:1px solid var(--sky2);"></div>Water</div>
+      <div class="leg"><div class="lg-ln" style="background:var(--lion);"></div>Lion trail</div>
+      <div class="leg"><div class="lg-ln" style="background:var(--elephant);"></div>Elephant trail</div>
+      <div class="leg"><div class="lg-ln" style="background:var(--giraffe);"></div>Giraffe trail</div>
+      <div class="leg"><div class="lg-ln" style="background:var(--hippo);"></div>Hippo trail</div>
+      <div class="leg"><div class="lg-box" style="border:1px dashed var(--bdr2);background:transparent;"></div>Zone</div>
+      <div style="margin-left:auto;font-family:'Space Mono';font-size:9px;color:var(--ink3);">© Malawi DNPW · ESRI</div>
+    </div>
+  </div>
+
+  <!-- ── RIGHT PANEL ── -->
+  <div class="right-col">
+
+    <!-- ROW 1 — stat tiles -->
+    <div class="stat-row">
+      <div class="st">
+        <div class="st-icon">🐾</div>
+        <div class="st-val" style="color:var(--forest2);">74</div>
+        <div class="st-lbl">Collared</div>
+        <div class="bar-track"><div class="bar-fill" style="width:100%;background:var(--forest3);"></div></div>
+        <div class="st-sub">68 active today</div>
+      </div>
+      <div class="st">
+        <div class="st-icon">⚠️</div>
+        <div class="st-val" style="color:var(--amber);" id="kAlerts">3</div>
+        <div class="st-lbl">Alerts</div>
+        <div class="bar-track"><div class="bar-fill" style="width:15%;background:var(--amber2);"></div></div>
+        <div class="st-sub">2 boundary · 1 bat</div>
+      </div>
+      <div class="st">
+        <div class="st-icon">🔋</div>
+        <div class="st-val" style="color:var(--sky);">77%</div>
+        <div class="st-lbl">Avg Battery</div>
+        <div class="bar-track"><div class="bar-fill" style="width:77%;background:var(--sky2);"></div></div>
+        <div class="st-sub">3 collars &lt; 30%</div>
+      </div>
+      <div class="st">
+        <div class="st-icon">📡</div>
+        <div class="st-val" style="color:var(--gold);">96%</div>
+        <div class="st-lbl">Fix Rate</div>
+        <div class="bar-track"><div class="bar-fill" style="width:96%;background:var(--gold2);"></div></div>
+        <div class="st-sub">1,124 fixes today</div>
+      </div>
+    </div>
+
+    <!-- ROW 2 — species side + detail + chart -->
+    <div class="mid-row">
+
+      <!-- species mini-sidebar -->
+      <div class="sp-side">
+        <div class="spc lion sel" onclick="focusSp('lion',this)">
+          <div class="spc-top">
+            <span class="spc-em">🦁</span>
+            <span class="spc-nm">Lions</span>
+            <div class="spc-sw on" id="sw-lion" onclick="event.stopPropagation();toggleSp('lion',null)"></div>
+          </div>
+          <div class="spc-nums">
+            <div class="sn"><div class="snv">14</div><div class="snl">Total</div></div>
+            <div class="sn"><div class="snv" style="color:var(--red);">2</div><div class="snl">Alerts</div></div>
+          </div>
+        </div>
+        <div class="spc elephant" onclick="focusSp('elephant',this)">
+          <div class="spc-top">
+            <span class="spc-em">🐘</span>
+            <span class="spc-nm">Elephants</span>
+            <div class="spc-sw on" id="sw-elephant" onclick="event.stopPropagation();toggleSp('elephant',null)"></div>
+          </div>
+          <div class="spc-nums">
+            <div class="sn"><div class="snv">32</div><div class="snl">Total</div></div>
+            <div class="sn"><div class="snv" style="color:var(--amber);">1</div><div class="snl">Alerts</div></div>
+          </div>
+        </div>
+        <div class="spc giraffe" onclick="focusSp('giraffe',this)">
+          <div class="spc-top">
+            <span class="spc-em">🦒</span>
+            <span class="spc-nm">Giraffes</span>
+            <div class="spc-sw on" id="sw-giraffe" onclick="event.stopPropagation();toggleSp('giraffe',null)"></div>
+          </div>
+          <div class="spc-nums">
+            <div class="sn"><div class="snv">19</div><div class="snl">Total</div></div>
+            <div class="sn"><div class="snv" style="color:var(--forest2);">0</div><div class="snl">Alerts</div></div>
+          </div>
+        </div>
+        <div class="spc hippo" onclick="focusSp('hippo',this)">
+          <div class="spc-top">
+            <span class="spc-em">🦛</span>
+            <span class="spc-nm">Hippos</span>
+            <div class="spc-sw on" id="sw-hippo" onclick="event.stopPropagation();toggleSp('hippo',null)"></div>
+          </div>
+          <div class="spc-nums">
+            <div class="sn"><div class="snv">9</div><div class="snl">Total</div></div>
+            <div class="sn"><div class="snv" style="color:var(--forest2);">0</div><div class="snl">Alerts</div></div>
+          </div>
+        </div>
+
+        <!-- park weather -->
+        <div style="margin-top:auto;padding:8px;background:var(--card);border:1px solid var(--bdr);border-radius:8px;">
+          <div style="font-size:9px;text-transform:uppercase;letter-spacing:1px;color:var(--ink3);margin-bottom:5px;">Weather</div>
+          <div style="font-size:22px;text-align:center;">⛅</div>
+          <div style="font-family:'Space Mono';font-size:16px;font-weight:700;text-align:center;color:var(--amber);">28°C</div>
+          <div style="font-size:10px;color:var(--ink3);text-align:center;">Partly cloudy</div>
+          <div style="display:flex;justify-content:space-around;margin-top:5px;font-size:9px;color:var(--ink3);">
+            <span>💧64%</span><span>🌬12km/h</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- detail + chart column -->
+      <div class="det-chart">
+        <!-- animal detail -->
+        <div class="det-card">
+          <div class="dc-header">
+            <div class="dc-ava" id="dAva">🦁</div>
+            <div>
+              <div class="dc-name" id="dName">Chewa — M</div>
+              <div class="dc-id" id="dId">KNP-L001</div>
+              <div class="dc-pill bok" id="dPill">● Active</div>
+            </div>
+          </div>
+          <div class="dc-grid">
+            <div class="dc-cell"><div class="dc-lbl">Speed</div><div class="dc-val" id="dSpd">3.2 km/h</div></div>
+            <div class="dc-cell"><div class="dc-lbl">Zone</div><div class="dc-val" id="dZone">North</div></div>
+            <div class="dc-cell"><div class="dc-lbl">Battery</div><div class="dc-val" id="dBt">82%</div></div>
+            <div class="dc-cell"><div class="dc-lbl">Last fix</div><div class="dc-val" id="dFix">3m ago</div></div>
+            <div class="dc-cell"><div class="dc-lbl">Fixes/day</div><div class="dc-val" id="dFxd">48</div></div>
+            <div class="dc-cell"><div class="dc-lbl">Status</div><div class="dc-val" id="dSt">Active</div></div>
+          </div>
+        </div>
+
+        <!-- chart -->
+        <div class="chart-area">
+          <div class="chart-hdr">
+            <div class="chart-title" id="chartTitle">Movement Activity</div>
+            <div class="chart-tabs">
+              <div class="ctab on" onclick="setChart('activity',this)">Activity</div>
+              <div class="ctab" onclick="setChart('speed',this)">Speed</div>
+              <div class="ctab" onclick="setChart('distance',this)">Dist.</div>
+              <div class="ctab" onclick="setChart('battery',this)">Battery</div>
+            </div>
+          </div>
+          <canvas id="spark"></canvas>
+        </div>
+
+        <!-- trail slider -->
+        <div class="trail-row">
+          <span class="trail-lbl">Trail window</span>
+          <input type="range" min="1" max="72" value="24" class="tslider" id="trSlider"
+                 oninput="document.getElementById('trLbl').textContent=this.value;rebuildPaths();">
+          <span class="trail-lbl"><span id="trLbl">24</span>h</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ROW 3 — alerts + animal list -->
+    <div class="bot-row">
+
+      <!-- alerts -->
+      <div class="bot-panel" style="border-right:1px solid var(--bdr);">
+        <div class="bot-hdr">
+          <div class="bot-title">Activity Log</div>
+          <div style="font-family:'Space Mono';font-size:9px;color:var(--ink3);" id="alertCount">6 entries</div>
+        </div>
+        <div class="bot-body" id="aFeed"></div>
+      </div>
+
+      <!-- animal list -->
+      <div class="bot-panel">
+        <div class="bot-hdr">
+          <div class="bot-title">Animals</div>
+          <div class="fp-wrap">
+            <div class="fp on" onclick="filterSp('all',this)">All</div>
+            <div class="fp" onclick="filterSp('lion',this)">🦁</div>
+            <div class="fp" onclick="filterSp('elephant',this)">🐘</div>
+            <div class="fp" onclick="filterSp('giraffe',this)">🦒</div>
+            <div class="fp" onclick="filterSp('hippo',this)">🦛</div>
+          </div>
+        </div>
+        <div class="bot-body" id="alist"></div>
+      </div>
+
+    </div>
+  </div><!-- /right-col -->
+</div><!-- /body -->
+<script>
+const KNP={"type":"FeatureCollection","features":[{"id":"0","type":"Feature","properties":{"AREA":2358623436.332,"PERIMETER":274692.385,"EACODE":20115901,"HOUSEHOLDS":98.0,"TOTAL":385,"MALE":207,"FEMALE":178,"TA":"Kasungu NP","TA_CODE":20115,"DISTRICT":"Kasungu","DIST_CODE":201,"CODE":24,"FEATURE":901,"EA_CODE2":20115000,"NAME":"Kasungu National Park"},"geometry":{"type":"MultiPolygon","coordinates":[[[[33.00914197235175,-12.88676105977086],[32.97827858865173,-12.883454673049645],[32.97255743054616,-12.879406095602004],[32.96414225055612,-12.865075006457966],[32.94643223968969,-12.847881280773658],[32.9551275181559,-12.824889964457094],[32.94710220414944,-12.800600108829121],[32.947379377467136,-12.790048205287764],[32.93852919465311,-12.773422217951765],[32.98862607278111,-12.727659369783641],[33.00284692037496,-12.70986313583074],[33.01528916355457,-12.66496451704467],[33.04993884994499,-12.620297057241551],[33.067688596089404,-12.606140877487213],[33.093778194225976,-12.594874478699165],[33.105833573140664,-12.609944635217872],[33.112717298467714,-12.61333293637409],[33.13363164103894,-12.59898114032084],[33.15214608593043,-12.596601991053323],[33.18481480978781,-12.608310129076564],[33.178025424527,-12.635163239981965],[33.18222269813822,-12.642105377050168],[33.19117353191306,-12.634566350940416],[33.20523664271972,-12.607255290202179],[33.22720387081267,-12.598601520976446],[33.24128070961714,-12.586290806868627],[33.267704238290705,-12.543791033226887],[33.28072153338015,-12.537185438861615],[33.29749071872505,-12.535105608132524],[33.29748287321821,-12.56334666385496],[33.288819747883835,-12.581342488071732],[33.274461187346795,-12.659470078200076],[33.27540253134067,-12.682257102956074],[33.2848629306245,-12.718545049352937],[33.2949106651472,-12.735525490980747],[33.30795791722153,-12.748297134219264],[33.31024825637601,-12.758178210053769],[33.30783969420723,-12.779567165193134],[33.299736925894805,-12.789197988431836],[33.2934073744445,-12.804405979532136],[33.29610701676221,-12.820553299982965],[33.29156189628083,-12.830170805903071],[33.296737807219365,-12.843774319916488],[33.2917343854335,-12.857380175930635],[33.30081412849673,-12.87238985801352],[33.29749265403546,-12.89779457211399],[33.30763918837057,-12.896968999724262],[33.32584866239743,-12.901848082701196],[33.337557462721094,-12.897438508477729],[33.351503397177545,-12.919022998411648],[33.34525435655367,-12.974643392061909],[33.329624911575245,-12.994665885463188],[33.31407873372273,-13.00405327377437],[33.30562948474918,-13.00220962090762],[33.29774698310963,-13.004786878037688],[33.29574845738003,-13.008903549094171],[33.29921121098158,-13.028097018290595],[33.295899720054344,-13.040199804773701],[33.25776752803795,-13.069846036679483],[33.25152283847874,-13.079536804752255],[33.24253752325075,-13.10063271021967],[33.24661648937362,-13.110738439237982],[33.24593459632907,-13.120830595177559],[33.252299859554334,-13.134306886929938],[33.246443861125634,-13.138870008417733],[33.23429689937422,-13.167356340886185],[33.228624223574684,-13.19290660695848],[33.19079600007336,-13.217352405773042],[33.164953789865734,-13.221936855190116],[33.15991569205949,-13.225385260727615],[33.146529794630716,-13.224145412913133],[33.14089427582273,-13.230026230422887],[33.131342187418745,-13.229380254903898],[33.12261935853001,-13.232667031124478],[33.1080501091029,-13.242059764802377],[33.104455674726296,-13.24953943781495],[33.095535684862405,-13.246378044658503],[33.074960692472374,-13.253248203089884],[33.06364174285127,-13.263288492019925],[33.07223760321035,-13.276904245737397],[33.072192944641785,-13.292719617906188],[33.02923098573985,-13.296037740007392],[33.02197317054265,-13.307829902244437],[32.990865710350505,-13.316167875032342],[32.97468424021284,-13.329332649138728],[32.93515136605059,-13.347501008835719],[32.924314155775185,-13.356260155158012],[32.919758640271475,-13.345208858843758],[32.94692774218124,-13.268137708193295],[32.952834348002106,-13.263020795968194],[32.96972843897728,-13.262526021729169],[32.982079006422445,-13.22908784144414],[32.991080909515894,-13.222749476887762],[33.01273574314053,-13.218987607299955],[33.016200223976284,-13.212612398965817],[33.005961260878834,-13.201219194913616],[32.99460805375109,-13.17524888736966],[32.977814861140196,-13.15685532479986],[32.978763541983085,-13.133525443979762],[32.97416944073753,-13.11564773476613],[32.9741855630168,-13.10757265530148],[32.9801697110656,-13.097698610559268],[32.98050644846694,-13.079134053829064],[32.993081664941265,-13.051590701589927],[32.98367809937751,-13.02854949300823],[32.9931160307473,-13.017915692098418],[32.99680368791919,-13.002190480296354],[33.01111896862352,-12.991329948825381],[33.0103093931465,-12.974392939376308],[33.01608493416432,-12.951415021708607],[33.0167133296304,-12.929920331388564],[33.0263458829605,-12.917503806152773],[33.01716085025102,-12.893541180536785],[33.00914197235175,-12.88676105977086]],[[32.991625060653966,-12.879652044658988],[32.99162765034028,-12.879581913333821],[32.99137235177436,-12.879155759880799],[32.991625060653966,-12.879652044658988]],[[32.991874692542986,-12.880142284485578],[32.991856897342714,-12.880088005494812],[32.991625060653966,-12.879652044658988],[32.991874692542986,-12.880142284485578]],[[32.99198750826368,-12.880486394869887],[32.99202608217799,-12.880439590114124],[32.991874692542986,-12.880142284485578],[32.99198750826368,-12.880486394869887]],[[32.9920174050949,-12.880508983070303],[32.99198750826368,-12.880486394869887],[32.9919141976687,-12.880575348300834],[32.9920174050949,-12.880508983070303]],[[32.99206345940432,-12.880543778849313],[32.992043874462105,-12.880491962522601],[32.9920174050949,-12.880508983070303],[32.99206345940432,-12.880543778849313]],[[32.99236511573164,-12.88101516554181],[32.992162560278004,-12.880800282471434],[32.992181663905576,-12.88085651469757],[32.99236511573164,-12.88101516554181]],[[32.99206345940432,-12.880543778849313],[32.992159471213505,-12.880797799142977],[32.992105251206674,-12.880575354127044],[32.99206345940432,-12.880543778849313]],[[32.99244864124199,-12.881089989393415],[32.992449132422486,-12.881081449161378],[32.99236511573164,-12.88101516554181],[32.99244864124199,-12.881089989393415]],[[32.99256257736063,-12.881185751504479],[32.992708106521526,-12.881319552184332],[32.99256961780908,-12.881191668923417],[32.99256257736063,-12.881185751504479]]],[[[32.9951780713867,-12.886433200693626],[32.99512368929137,-12.886450983553157],[32.99509325634813,-12.886394998035147],[32.9951780713867,-12.886433200693626]]],[[[32.99955506892338,-12.887839293366707],[32.99949261423372,-12.887809537386715],[32.99958689591499,-12.88785049784354],[32.99955506892338,-12.887839293366707]],[[32.99955506892338,-12.887839293366707],[32.99955166359432,-12.887835284388904],[32.99954932779771,-12.887834265923358],[32.99955506892338,-12.887839293366707]]]]}}]};
+
+const PC=[-12.9457,33.1358];
+const PB=[[-13.36,32.91],[-12.53,33.36]];
+const SC={lion:'#c45a00',elephant:'#5a3e9e',giraffe:'#1e6e40',hippo:'#1464a0'};
+
+const AN=[
+  {id:'KNP-L001',nm:'Chewa',    sp:'lion',     sx:'M',e:'🦁',lat:-12.780,lng:33.050,spd:3.2,st:'Active',  bt:82,zone:'North',   fx:48},
+  {id:'KNP-L002',nm:'Tumbuka',  sp:'lion',     sx:'F',e:'🦁',lat:-12.850,lng:33.180,spd:1.8,st:'Resting', bt:91,zone:'Central', fx:48},
+  {id:'KNP-L003',nm:'Ngoni',    sp:'lion',     sx:'M',e:'🦁',lat:-12.950,lng:33.080,spd:5.5,st:'Hunting', bt:67,zone:'South',   fx:48},
+  {id:'KNP-L004',nm:'Yao',      sp:'lion',     sx:'F',e:'🦁',lat:-13.050,lng:33.220,spd:0.0,st:'Resting', bt:44,zone:'South',   fx:24,al:'Low battery'},
+  {id:'KNP-L005',nm:'Lomwe',    sp:'lion',     sx:'M',e:'🦁',lat:-12.700,lng:33.150,spd:7.1,st:'Active',  bt:78,zone:'North',   fx:48},
+  {id:'KNP-L006',nm:'Sena',     sp:'lion',     sx:'F',e:'🦁',lat:-13.150,lng:33.120,spd:2.3,st:'Active',  bt:85,zone:'South',   fx:48,al:'Near boundary'},
+  {id:'KNP-E001',nm:'Kasitu',   sp:'elephant', sx:'M',e:'🐘',lat:-12.880,lng:33.140,spd:4.1,st:'Active',  bt:88,zone:'Central', fx:48},
+  {id:'KNP-E002',nm:'Dwangwa',  sp:'elephant', sx:'F',e:'🐘',lat:-12.930,lng:33.250,spd:2.9,st:'Grazing', bt:76,zone:'East',    fx:48},
+  {id:'KNP-E003',nm:'Bua',      sp:'elephant', sx:'M',e:'🐘',lat:-13.080,lng:33.050,spd:3.7,st:'Active',  bt:92,zone:'South',   fx:48},
+  {id:'KNP-E004',nm:'Lifupa',   sp:'elephant', sx:'F',e:'🐘',lat:-12.750,lng:33.200,spd:1.5,st:'Grazing', bt:61,zone:'North',   fx:24,al:'Low battery'},
+  {id:'KNP-E005',nm:'Mchesi',   sp:'elephant', sx:'M',e:'🐘',lat:-13.000,lng:33.300,spd:5.8,st:'Active',  bt:73,zone:'East',    fx:48},
+  {id:'KNP-G001',nm:'Mvuu',     sp:'giraffe',  sx:'M',e:'🦒',lat:-12.800,lng:33.220,spd:6.4,st:'Active',  bt:87,zone:'North',   fx:48},
+  {id:'KNP-G002',nm:'Njati',    sp:'giraffe',  sx:'F',e:'🦒',lat:-12.920,lng:33.170,spd:4.2,st:'Grazing', bt:79,zone:'Central', fx:48},
+  {id:'KNP-G003',nm:'Kalulu',   sp:'giraffe',  sx:'M',e:'🦒',lat:-13.100,lng:33.280,spd:3.9,st:'Active',  bt:93,zone:'South',   fx:48},
+  {id:'KNP-H001',nm:'Chipeta',  sp:'hippo',    sx:'M',e:'🦛',lat:-12.870,lng:33.100,spd:0.8,st:'In Water',bt:88,zone:'River',   fx:48},
+  {id:'KNP-H002',nm:'Nkhata',   sp:'hippo',    sx:'F',e:'🦛',lat:-12.910,lng:33.090,spd:0.3,st:'In Water',bt:80,zone:'River',   fx:48},
+  {id:'KNP-H003',nm:'Lifidzi',  sp:'hippo',    sx:'M',e:'🦛',lat:-13.030,lng:33.130,spd:1.9,st:'Active',  bt:96,zone:'River',   fx:48},
+];
+
+// MAP
+const map=L.map('map',{center:PC,zoom:10,zoomControl:false,attributionControl:true});
+const BM={
+  sat: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{attribution:'Esri',maxZoom:18}),
+  osm: L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'OSM',maxZoom:19}),
+  topo:L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png',{attribution:'OTM',maxZoom:17})
+};
+let curBm='sat'; BM.sat.addTo(map);
+map.on('mousemove',e=>{
+  document.getElementById('mLat').textContent=e.latlng.lat.toFixed(4);
+  document.getElementById('mLng').textContent=e.latlng.lng.toFixed(4);
+});
+map.on('zoomend',()=>document.getElementById('mZ').textContent=map.getZoom());
+
+// Real KNP boundary
+L.geoJSON(KNP,{style:{color:'#1e5c2e',weight:2.5,fillColor:'#2d7a40',fillOpacity:0.15}})
+  .addTo(map)
+  .bindPopup('<div class="pt" style="color:#1e5c2e">&#127965; Kasungu National Park</div>' +
+    '<div class="pr"><span>Area</span><span>2,316 km²</span></div>' +
+    '<div class="pr"><span>District</span><span>Kasungu, Malawi</span></div>');
+
+// Management zones
+const ZONES=[
+  {nm:'North Zone',  pts:[[-12.55,33.0],[-12.55,33.26],[-12.80,33.26],[-12.80,33.0]], c:'#c45a00'},
+  {nm:'Central Zone',pts:[[-12.80,33.0],[-12.80,33.26],[-13.05,33.26],[-13.05,33.0]], c:'#5a3e9e'},
+  {nm:'South Zone',  pts:[[-13.05,33.0],[-13.05,33.26],[-13.30,33.26],[-13.30,33.0]], c:'#1e6e40'},
+  {nm:'River Corridor',pts:[[-12.62,33.07],[-12.62,33.16],[-13.20,33.19],[-13.20,33.10]],c:'#1464a0'},
+];
+const ZL=ZONES.map(z=>L.polygon(z.pts,{color:z.c,weight:1,fillColor:z.c,fillOpacity:0.07,dashArray:'4,4'})
+  .bindPopup('<div class="pt" style="color:'+z.c+'">'+z.nm+'</div>'));
+let zonesOn=true; ZL.forEach(z=>z.addTo(map));
+
+// Rivers
+[
+  [[-12.62,33.08],[-12.72,33.10],[-12.80,33.11],[-12.88,33.10],[-12.97,33.12],[-13.06,33.13],[-13.18,33.16]],
+  [[-12.70,33.22],[-12.79,33.20],[-12.88,33.19],[-12.97,33.22],[-13.05,33.28]]
+].forEach(r=>L.polyline(r,{color:'#2884cc',weight:3,opacity:0.75}).addTo(map));
+L.circle([-12.887,33.103],{radius:3000,color:'#2884cc',weight:1.5,fillColor:'#50aaee',fillOpacity:0.3})
+  .addTo(map).bindPopup('<div class="pt" style="color:#2884cc">&#128167; Lifupa Dam</div>');
+
+// Layer groups
+const LGM={lion:L.layerGroup(),elephant:L.layerGroup(),giraffe:L.layerGroup(),hippo:L.layerGroup()};
+const LGP={lion:L.layerGroup(),elephant:L.layerGroup(),giraffe:L.layerGroup(),hippo:L.layerGroup()};
+Object.values(LGM).forEach(g=>g.addTo(map));
+Object.values(LGP).forEach(g=>g.addTo(map));
+const MO={};
+let pathsOn=true;
+const SPV={lion:true,elephant:true,giraffe:true,hippo:true};
+
+function mkIcon(a){
+  const c=SC[a.sp],al=!!a.al,sz=al?28:22;
+  return L.divIcon({
+    className:'',
+    html:'<div style="width:'+sz+'px;height:'+sz+'px;background:'+c+'18;border:2.5px solid '+c+
+         ';border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:'+(sz-9)+'px;'+
+         'box-shadow:0 2px 10px '+c+'55;cursor:pointer;'+(al?'animation:xpls 1.5s infinite;':'')+'">'+a.e+'</div>',
+    iconSize:[sz,sz],iconAnchor:[sz/2,sz/2]
+  });
+}
+function mkPop(a){
+  return '<div class="pt" style="color:'+SC[a.sp]+'">'+a.e+' '+a.nm+
+    ' <span style="color:var(--ink3);font-weight:400;font-size:10px;">'+a.id+'</span></div>'+
+    '<div class="pr"><span>Sex</span><span>'+a.sx+'</span></div>'+
+    '<div class="pr"><span>Speed</span><span>'+a.spd+' km/h</span></div>'+
+    '<div class="pr"><span>Status</span><span>'+a.st+'</span></div>'+
+    '<div class="pr"><span>Battery</span><span>'+a.bt+'%</span></div>'+
+    '<div class="pr"><span>Zone</span><span>'+a.zone+'</span></div>'+
+    (a.al?'<div class="pal">&#9888; '+a.al+'</div>':'');
+}
+function genPath(a,hrs){
+  const pts=[],steps=Math.min(hrs*2,80);
+  let lt=a.lat,ln=a.lng;
+  for(let i=steps;i>=0;i--){lt+=(Math.random()-.5)*.015;ln+=(Math.random()-.5)*.015;pts.push([lt,ln]);}
+  pts.push([a.lat,a.lng]);return pts;
+}
+
+AN.forEach(a=>{
+  const m=L.marker([a.lat,a.lng],{icon:mkIcon(a)}).addTo(LGM[a.sp]);
+  m.bindPopup(mkPop(a),{maxWidth:210});
+  m.on('click',()=>selA(a));
+  LGP[a.sp].addLayer(L.polyline(genPath(a,24),{color:SC[a.sp],weight:2,opacity:0.5,dashArray:'5,4'}));
+  MO[a.id]={m,d:a};
+});
+
+function rebuildPaths(){
+  const hrs=parseInt(document.getElementById('trSlider').value);
+  Object.keys(LGP).forEach(sp=>LGP[sp].clearLayers());
+  AN.forEach(a=>{if(SPV[a.sp])LGP[a.sp].addLayer(L.polyline(genPath(a,hrs),{color:SC[a.sp],weight:2,opacity:0.5,dashArray:'5,4'}));});
+}
+
+// Controls
+function fitPark(){map.fitBounds(PB,{padding:[20,20]});}
+function setBm(k,el){
+  ['pill-sat','pill-osm','pill-topo'].forEach(id=>{const e=document.getElementById(id);if(e)e.classList.remove('on');});
+  el.classList.add('on');
+  map.removeLayer(BM[curBm]);BM[k].addTo(map);BM[k].bringToBack();curBm=k;
+}
+function togglePaths(el){
+  pathsOn=!pathsOn;el.classList.toggle('on',pathsOn);
+  Object.keys(LGP).forEach(sp=>{if(SPV[sp]){pathsOn?map.addLayer(LGP[sp]):map.removeLayer(LGP[sp]);}});
+}
+function toggleZones(el){
+  zonesOn=!zonesOn;el.classList.toggle('on',zonesOn);
+  ZL.forEach(z=>zonesOn?z.addTo(map):map.removeLayer(z));
+}
+function toggleSp(sp,chip){
+  SPV[sp]=!SPV[sp];
+  // sync chip
+  const mc=document.getElementById('mc-'+sp);
+  if(mc)mc.classList.toggle('off',!SPV[sp]);
+  // sync sidebar switch
+  const sw=document.getElementById('sw-'+sp);
+  if(sw)sw.classList.toggle('on',SPV[sp]);
+  SPV[sp]?map.addLayer(LGM[sp]):map.removeLayer(LGM[sp]);
+  SPV[sp]?map.addLayer(LGP[sp]):map.removeLayer(LGP[sp]);
+}
+function focusSp(sp,card){
+  document.querySelectorAll('.spc').forEach(c=>c.classList.remove('sel'));
+  card.classList.add('sel');
+  const first=AN.find(a=>a.sp===sp);
+  if(first)selA(first);
+}
+function doSearch(q){
+  const ql=q.toLowerCase();
+  document.querySelectorAll('.ali').forEach(el=>{
+    const t=el.textContent.toLowerCase();
+    el.style.display=t.includes(ql)?'':'none';
+  });
+}
+
+// SELECTED ANIMAL
+let curA=AN[0];
+let chartMode='activity';
+const CHART_TITLES={activity:'Movement Activity',speed:'Speed (km/h)',distance:'Daily Distance (km)',battery:'Battery Level (%)'};
+
+function selA(a){
+  curA=a;
+  document.getElementById('dAva').textContent=a.e;
+  document.getElementById('dAva').style.borderColor=SC[a.sp];
+  document.getElementById('dName').textContent=a.nm+' — '+a.sx;
+  document.getElementById('dId').textContent=a.id+' · GPS-'+(Math.floor(Math.random()*90+10))+'A';
+  document.getElementById('dSpd').textContent=a.spd+' km/h';
+  document.getElementById('dFix').textContent=(Math.floor(Math.random()*9)+1)+'m ago';
+  document.getElementById('dZone').textContent=a.zone;
+  document.getElementById('dFxd').textContent=a.fx;
+  document.getElementById('dSt').textContent=a.st;
+  const bc=a.bt>60?'var(--forest2)':a.bt>25?'var(--amber)':'var(--red)';
+  document.getElementById('dBt').textContent=a.bt+'%';
+  document.getElementById('dBt').style.color=bc;
+  const pc=a.al?'bdn':(a.st==='Hunting'||a.st==='Alert'?'bwn':'bok');
+  const pd=document.getElementById('dPill');
+  pd.className='dc-pill '+pc;pd.textContent='● '+a.st;
+  document.getElementById('mSel').textContent=a.e+' '+a.nm;
+  map.panTo([a.lat,a.lng]);
+  drawSpark();
+  document.querySelectorAll('.ali').forEach(el=>el.classList.toggle('sel',el.dataset.id===a.id));
+}
+selA(AN[0]);
+
+// ANIMAL LIST
+let spFilter='all';
+function filterSp(sp,btn){
+  spFilter=sp;
+  document.querySelectorAll('.fp').forEach(b=>b.classList.remove('on'));
+  btn.classList.add('on');
+  buildAlist();
+}
+function buildAlist(){
+  const el=document.getElementById('alist');el.innerHTML='';
+  const list=spFilter==='all'?AN:AN.filter(a=>a.sp===spFilter);
+  list.forEach(a=>{
+    const d=document.createElement('div');
+    d.className='ali'+(a.id===curA.id?' sel':'');
+    d.dataset.id=a.id;
+    const bc=a.al?'bdn':(a.st==='Hunting'?'bwn':'bok');
+    d.innerHTML='<div class="ali-dot" style="background:'+SC[a.sp]+'"></div>'+
+      '<div class="ali-main"><div class="ali-name">'+a.e+' '+a.nm+'</div>'+
+      '<div class="ali-sub">'+a.id+' · '+a.zone+'</div></div>'+
+      '<span class="ali-badge '+bc+'">'+(a.al?'ALERT':a.st)+'</span>';
+    d.onclick=()=>selA(a);
+    el.appendChild(d);
+  });
+}
+buildAlist();
+
+// CHART
+function setChart(mode,btn){
+  chartMode=mode;
+  document.querySelectorAll('.ctab').forEach(b=>b.classList.remove('on'));
+  btn.classList.add('on');
+  document.getElementById('chartTitle').textContent=CHART_TITLES[mode];
+  drawSpark();
+}
+function drawSpark(){
+  const cv=document.getElementById('spark');
+  if(!cv.offsetWidth)return;
+  const ctx=cv.getContext('2d');
+  cv.width=cv.offsetWidth*2;
+  const ch=document.querySelector('.chart-area').clientHeight-52;
+  cv.height=Math.max(ch*2,80);
+  const w=cv.width,h=cv.height;
+  ctx.clearRect(0,0,w,h);
+  const raw=Array.from({length:24},(_,i)=>{
+    if(chartMode==='speed')return Math.random()*9;
+    if(chartMode==='distance')return Math.random()*6+0.5;
+    if(chartMode==='battery')return curA.bt-(Math.random()*4)+(i/24)*3;
+    return Math.random()*80+10;
+  });
+  const mx=Math.max(...raw),mn=Math.min(...raw),range=mx-mn||1;
+  const c=SC[curA.sp];
+  // grid
+  ctx.strokeStyle='rgba(0,0,0,0.05)';ctx.lineWidth=1;
+  for(let i=0;i<5;i++){const y=(i/4)*h;ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(w,y);ctx.stroke();}
+  // area
+  ctx.beginPath();
+  raw.forEach((v,i)=>{const x=(i/(raw.length-1))*w,y=h-((v-mn)/range)*h*.82-h*.05;i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);});
+  ctx.strokeStyle=c;ctx.lineWidth=3;ctx.stroke();
+  const last=raw[raw.length-1],lx=w,ly=h-((last-mn)/range)*h*.82-h*.05;
+  ctx.lineTo(lx,h);ctx.lineTo(0,h);ctx.closePath();
+  const g=ctx.createLinearGradient(0,0,0,h);
+  g.addColorStop(0,c+'44');g.addColorStop(1,c+'00');
+  ctx.fillStyle=g;ctx.fill();
+  // dots at peaks
+  raw.forEach((v,i)=>{
+    if(i===0||i===raw.length-1||(v>raw[i-1]&&v>raw[i+1])){
+      const x=(i/(raw.length-1))*w,y=h-((v-mn)/range)*h*.82-h*.05;
+      ctx.beginPath();ctx.arc(x,y,4,0,Math.PI*2);ctx.fillStyle=c;ctx.fill();
+      ctx.beginPath();ctx.arc(x,y,2,0,Math.PI*2);ctx.fillStyle='#fff';ctx.fill();
+    }
+  });
+  // x labels
+  ctx.fillStyle='rgba(122,96,64,0.6)';ctx.font='18px Space Mono';
+  ['0h','6h','12h','18h','23h'].forEach((l,i)=>{ctx.fillText(l,(i/4)*w+2,h-2);});
+}
+window.addEventListener('resize',drawSpark);
+setTimeout(drawSpark,500);
+
+// ALERTS
+const ALRTS=[
+  {t:'d',i:'🚨',m:'Sena (L006) — western boundary proximity detected'},
+  {t:'w',i:'🔋',m:'Yao (L004) battery 44% — schedule field recharge'},
+  {t:'i',i:'📡',m:'All 17 GPS collars reporting normally'},
+  {t:'g',i:'🐘',m:'Kasitu herd (4) observed near Lifupa Dam'},
+  {t:'g',i:'🦛',m:'Hippo pod within river corridor — normal'},
+  {t:'w',i:'🚗',m:'Unregistered vehicle — North Gate vicinity'},
+  {t:'d',i:'🦁',m:'Ngoni (L003) pride hunting behaviour — South'},
+  {t:'g',i:'🦒',m:'Kalulu entered southern grassland — grazing'},
+  {t:'i',i:'🛰',m:'Satellite pass — 1,124 positions logged today'},
+  {t:'w',i:'🐘',m:'Lifupa (E004) low battery — vet team alerted'},
+];
+let ai=0;
+function pushAlert(){
+  const fd=document.getElementById('aFeed');
+  const a=ALRTS[ai%ALRTS.length];ai++;
+  const d=document.createElement('div');
+  d.className='af '+a.t;
+  d.innerHTML='<div class="af-stripe"></div><div class="af-ico">'+a.i+'</div>'+
+    '<div class="af-txt"><div class="af-msg">'+a.m+'</div>'+
+    '<div class="af-t">'+new Date().toTimeString().slice(0,8)+'</div></div>';
+  fd.insertBefore(d,fd.firstChild);
+  if(fd.children.length>12)fd.removeChild(fd.lastChild);
+  document.getElementById('alertCount').textContent=fd.children.length+' entries';
+}
+for(let i=0;i<7;i++)pushAlert();
+setInterval(pushAlert,10000);
+
+// CLOCK
+function tick(){
+  const n=new Date();
+  document.getElementById('clk').textContent=n.toTimeString().slice(0,8);
+  document.getElementById('dat').textContent=n.toDateString();
+}
+setInterval(tick,1000);tick();
+
+// NAV TABS (placeholder)
+function setTab(t,el){
+  document.querySelectorAll('.nav-tab[id^="tab-"]').forEach(b=>b.classList.remove('on'));
+  el.classList.add('on');
+}
+
+// LIVE MOVEMENT
+setInterval(()=>{
+  AN.forEach(a=>{
+    a.lat+=(Math.random()-.5)*.003;a.lng+=(Math.random()-.5)*.003;
+    a.spd=Math.max(0,+(a.spd+(Math.random()-.5)*.5).toFixed(1));
+    if(MO[a.id])MO[a.id].m.setLatLng([a.lat,a.lng]);
+  });
+  if(curA){
+    document.getElementById('dSpd').textContent=curA.spd+' km/h';
+    drawSpark();
+  }
+},8000);
+
+// pulse style
+const st=document.createElement('style');
+st.textContent='@keyframes xpls{0%,100%{transform:scale(1);opacity:1;}50%{transform:scale(1.2);opacity:.7;}}';
+document.head.appendChild(st);
+</script>
+</body>
+</html>
